@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CollabNet</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/css/chat.css">
+</head>
+<body>
+  <div id="banner" class="banner" hidden role="status"></div>
+
+  <main id="login-view" class="center">
+    <form id="login-form" class="login" autocomplete="off">
+      <h1>Collab<span>Net</span></h1>
+      <label class="field">Username
+        <input id="login-user" required maxlength="32" autofocus>
+      </label>
+      <label class="field">Password
+        <input id="login-pass" type="password" required>
+      </label>
+      <p id="login-error" class="form-error" role="alert" hidden></p>
+      <button id="login-btn" class="btn" type="submit">Log in</button>
+    </form>
+  </main>
+
+  <div id="app-view" class="app" hidden>
+    <aside class="side" aria-label="Online users">
+      <div class="brand">Collab<b>Net</b></div>
+      <nav>
+        <ul id="channel-list" class="list"></ul>
+        <div class="sec">Online</div>
+        <ul id="user-list" class="list"></ul>
+      </nav>
+      <div class="self">
+        <div id="self-avatar" class="av"></div>
+        <div class="grow" id="self-name"></div>
+        <button id="logout-btn" class="btn ghost sm" type="button">Log out</button>
+      </div>
+    </aside>
+
+    <section class="main" aria-label="Conversation">
+      <header class="top">
+        <h2 id="conv-title"></h2>
+        <span class="grow"></span>
+        <span id="pill-conn" class="pill"></span>
+      </header>
+      <div id="messages" class="msgs" aria-live="polite"></div>
+      <form id="composer" class="inp" autocomplete="off">
+        <input id="file-input" type="file" hidden>
+        <button id="attach-btn" class="btn ghost" type="button" aria-label="Send file">Attach</button>
+        <input id="text-input" placeholder="Type a message…" maxlength="2000" aria-label="Message">
+        <button id="send-btn" class="btn" type="submit">Send</button>
+      </form>
+    </section>
+
+    <aside class="right" aria-label="Network status and file transfers">
+      <div class="sec first">Network status</div>
+      <div class="card" id="net-card"></div>
+      <div class="sec">File transfers</div>
+      <div id="transfer-list"></div>
+    </aside>
+  </div>
+
+  <div id="toasts" class="toasts" aria-live="assertive"></div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

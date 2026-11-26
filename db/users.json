@@ -1,0 +1,38 @@
+{
+  "alice": {
+    "salt": "6b417bf345548edd3fd3a5c4fb8b77ea",
+    "hash": "92a90a6e105aaac7783f22681dd7faf13b092e7c1ad0e2d9d363a20549f2e850"
+  },
+  "bob": {
+    "salt": "0800f0f9b0e2e7fcbd7de6696fc298ba",
+    "hash": "b337d35e6cfe8e64e0eee1fd843057db69e9f4d2502f70f0eb54d6d9e68f3198"
+  },
+  "carol": {
+    "salt": "002795a9cfee26a1b77151eb9fb25438",
+    "hash": "c1c39f0f6e02f92577df103f36a2691b91610c730c130ee78936e1194e06022e"
+  },
+  "dave": {
+    "salt": "67d1d32e424ad71b9b58757324399dee",
+    "hash": "4579f77424864474261b23900f05fc3003bd4666b77ed9596930928bfd1df9b2"
+  },
+  "quoc": {
+    "salt": "424c8492cd2f03bf508e4180e3fa4f70",
+    "hash": "ccfb56fdd311b834da21e50dc335f6cd47da2d531227c95eedaddca98e9151d7"
+  },
+  "khang": {
+    "salt": "8486644be67ab8a43121985940c1bbcc",
+    "hash": "e9bae3c79324e3ff06423448b8cefd2c30ab619ffd06b451076f78fd6606e642"
+  },
+  "nhat": {
+    "salt": "b644831cc4fd97f5b66b9aece3280659",
+    "hash": "4b0da9de9c2db48a9808e0c5712c8a94d991e03df1f4153a1a776f08112ff9f7"
+  },
+  "tri": {
+    "salt": "e306ee8ee847c71a94a1645e1bffae4d",
+    "hash": "bcead7d45231a83f5b3fb43eb8122f3b06212dae1d67c38e90063a30fb286360"
+  },
+  "an": {
+    "salt": "19bec3bc64e04540c2f6b7fdecfe5b31",
+    "hash": "45703ebf5ce23d664b6fe5f96b00b30607d2677560e657462d98b011c666b660"
+  }
+}
