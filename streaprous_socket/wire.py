@@ -1,8 +1,20 @@
 """
 streaprous_socket.wire  [Owner: TV3 - Vo Minh Tri]
 
-Packet format (15-byte header), DATA/ACK/JSON encoding, and per-stream
-reassembly (MessageStream) to avoid head-of-line blocking (Kurose 3.8).
+Everything CCP (CollabNet Channel Protocol) puts on the wire. All numbers are big-endian.
+
+    header      magic(2) version(1) type(1) flags(1) connection_id(4) seq(4) length(2)
+    HELLO       Rc(16) || RSA-OAEP(server public key, master secret)(256)     not encrypted
+    HELLO_ACK   Rs(16) || HMAC-SHA256(Ms, "server finished" || Rc || Rs)(32)  not encrypted
+    DATA        stream_id(4) offset(8) data(<= 1000)                          encrypted
+    ACK         rwnd(2) rcv_base(4) count(1) seq(4) x count                    encrypted
+    PING, PONG  empty                                                          encrypted
+    CLOSE       reason(1)                                                      encrypted
+    DISCOVER    empty; the server answers with the same 15 bytes              not encrypted
+
+`seq` is the DATA sequence number (0 in every other packet). The FIN flag marks
+the last segment of a file (End-of-Message). Streams 0 and 1 carry JSON
+messages, each framed as length(4) || UTF-8 JSON.
 """
 import json
 import struct
@@ -11,22 +23,22 @@ from enum import IntEnum
 MAGIC = 0xC0DE
 VERSION = 1
 HEADER = struct.Struct("!HBBBIIH")
-HEADER_SIZE = HEADER.size           # 15 bytes
-MAX_DATAGRAM = 1200
-SEGMENT_SIZE = 1000
-NONCE_SIZE = 16
-FIN = 0x01
+HEADER_SIZE = HEADER.size          # 15
+MAX_DATAGRAM = 1200                # far below a 1500-byte Ethernet MTU: no IP fragmentation
+SEGMENT_SIZE = 1000                # stream bytes per DATA packet
+NONCE_SIZE = 16                    # Rc, Rs
+FIN = 0x01                         # flags: last segment of a file
 
-CONTROL_STREAM = 0
-CHAT_STREAM = 1
-FIRST_FILE_STREAM = 2
+CONTROL_STREAM = 0                 # login, user list, presence, errors, file negotiation
+CHAT_STREAM = 1                    # MSG / MSG_DELIVER
+FIRST_FILE_STREAM = 2              # one stream per accepted file transfer from here on
 
-HEARTBEAT_INTERVAL = 5.0
-HEARTBEAT_TIMEOUT = 15.0
-AUTH_DEADLINE = 10.0
+HEARTBEAT_INTERVAL = 5.0           # send PING after this long without sending
+HEARTBEAT_TIMEOUT = 15.0           # peer is dead after this long without receiving
+AUTH_DEADLINE = 10.0               # time allowed between HELLO and a successful login
 
-MAX_MESSAGE = 64 * 1024
-RCV_BUFFER = 64 * SEGMENT_SIZE      # RcvBuffer for flow control (Kurose 3.5.5)
+MAX_MESSAGE = 64 * 1024            # largest JSON message
+RCV_BUFFER = 64 * SEGMENT_SIZE     # RcvBuffer: bytes a connection keeps waiting for a gap (3.5.5)
 
 _DATA = struct.Struct("!IQ")
 _ACK = struct.Struct("!HIB")
@@ -52,71 +64,107 @@ class CloseReason(IntEnum):
 
 
 class PacketError(ValueError):
-    """Invalid CCP datagram."""
+    """A datagram that is not CCP; the receiver drops it."""
 
 
 class Header:
     def __init__(self, raw):
-        # TODO (TV3): unpack 15-byte header into type, flags, connection_id, seq, raw
-        raise NotImplementedError
+        _, _, ptype, self.flags, self.connection_id, self.seq, _ = HEADER.unpack(raw)
+        self.type = PacketType(ptype)
+        self.raw = raw                         # authenticated by the packet MAC
 
 
 def pack_header(ptype, flags, connection_id, seq, length):
-    # TODO (TV3): pack MAGIC, VERSION, ptype, flags, connection_id, seq, length
-    raise NotImplementedError
+    return HEADER.pack(MAGIC, VERSION, ptype, flags, connection_id, seq, length)
 
 
 def unpack(datagram):
-    # TODO (TV3): validate size, MAGIC, VERSION, length, ptype; return (Header, body)
-    raise NotImplementedError
+    """Split a datagram into (Header, body). PacketError if it is not a CCP packet."""
+    if not HEADER_SIZE <= len(datagram) <= MAX_DATAGRAM:
+        raise PacketError("bad size")
+    magic, version, ptype, _, _, _, length = HEADER.unpack_from(datagram)
+    if magic != MAGIC or version != VERSION or length != len(datagram) - HEADER_SIZE \
+            or ptype not in PacketType._value2member_map_:
+        raise PacketError("not a CCP packet")
+    return Header(datagram[:HEADER_SIZE]), datagram[HEADER_SIZE:]
 
 
 def is_file_stream(stream_id):
-    # TODO (TV3): return True if stream_id >= FIRST_FILE_STREAM
-    raise NotImplementedError
+    return stream_id >= FIRST_FILE_STREAM
 
+
+# ---- DATA / ACK payloads (inside encrypted packets, so already authenticated) ----
 
 def encode_data(stream_id, offset, data):
-    # TODO (TV3): pack stream_id(4) + offset(8) + data
-    raise NotImplementedError
+    return _DATA.pack(stream_id, offset) + data
 
 
 def decode_data(payload):
-    # TODO (TV3): unpack (stream_id, offset, data)
-    raise NotImplementedError
+    stream_id, offset = _DATA.unpack_from(payload)
+    return stream_id, offset, payload[_DATA.size:]
 
 
 def encode_ack(rwnd, rcv_base, seqs):
-    # TODO (TV3): pack rwnd(2) + rcv_base(4) + count(1) + seq(4)*count
-    raise NotImplementedError
+    """seqs: the packets received above rcv_base (at most the window, 64)."""
+    return _ACK.pack(rwnd, rcv_base, len(seqs)) + struct.pack(f"!{len(seqs)}I", *seqs)
 
 
 def decode_ack(payload):
-    # TODO (TV3): unpack (rwnd, rcv_base, seqs)
-    raise NotImplementedError
+    rwnd, rcv_base, count = _ACK.unpack_from(payload)
+    return rwnd, rcv_base, struct.unpack_from(f"!{count}I", payload, _ACK.size)
 
+
+# ---- JSON messages on streams 0 and 1 ----
 
 def encode_message(msg_type, payload, msg_id):
-    # TODO (TV3): length-prefixed UTF-8 JSON frame {"type", "payload", "id"}
-    raise NotImplementedError
+    """One frame: length(4) || {"type", "payload", "id"} as UTF-8 JSON."""
+    body = json.dumps({"type": msg_type, "payload": payload, "id": msg_id},
+                      ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return _FRAME.pack(len(body)) + body
 
 
 def decode_message(frame):
-    # TODO (TV3): parse UTF-8 JSON bytes into dict
-    raise NotImplementedError
+    return json.loads(frame.decode("utf-8"))
 
 
 class MessageStream:
-    """Per-stream byte reassembly & frame extraction (no head-of-line blocking)."""
+    """Receive side of stream 0 or 1: put segments back in offset order and cut frames.
+
+    Every stream has its own MessageStream, so a missing chat segment never holds
+    back the control stream or a file (no head-of-line blocking between streams).
+    """
 
     def __init__(self):
-        # TODO (TV3): init _next, _early, buffered (bytes waiting in _early), _buffer
-        raise NotImplementedError
+        self._next = 0          # offset of the next byte we need
+        self._early = {}        # offset -> data, segments that arrived after a gap
+        self.buffered = 0       # bytes in _early: what this stream takes from RCV_BUFFER
+        self._buffer = bytearray()
 
     def feed(self, offset, data):
-        # TODO (TV3): buffer out-of-order up to RCV_BUFFER, fill gaps, extract frames
-        raise NotImplementedError
+        """Add a segment; return the complete frame bodies. PacketError on a bad frame."""
+        if offset > self._next:
+            # A sender that respects rwnd never fills the buffer; beyond it, drop.
+            if offset not in self._early and self.buffered + len(data) <= RCV_BUFFER:
+                self._early[offset] = data
+                self.buffered += len(data)
+            return []
+        self._append(data[self._next - offset:])
+        while self._next in self._early:
+            data = self._early.pop(self._next)
+            self.buffered -= len(data)
+            self._append(data)
+
+        frames = []
+        while len(self._buffer) >= _FRAME.size:
+            (length,) = _FRAME.unpack_from(self._buffer)
+            if not 0 < length <= MAX_MESSAGE:
+                raise PacketError(f"bad frame length {length}")
+            if len(self._buffer) < _FRAME.size + length:
+                break
+            frames.append(bytes(self._buffer[_FRAME.size:_FRAME.size + length]))
+            del self._buffer[:_FRAME.size + length]
+        return frames
 
     def _append(self, data):
-        # TODO (TV3): append in-order bytes to _buffer and advance _next
-        raise NotImplementedError
+        self._buffer += data
+        self._next += len(data)
